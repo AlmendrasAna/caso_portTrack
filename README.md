@@ -61,25 +61,31 @@ Para una plataforma portuarias que gestiona operaciones críticas en tiempo real
 | Componente                        | Función                                                                 |
 |-----------------------------------|-------------------------------------------------------------------------|
 | **Service Mesh** (Istio, Linkerd) | Controla y ajusta la distribución de tráfico entre versiones.           |
-| **Monitoreo** (Prometheus         | Detecta errores, latencias y métricas anómalas en tiempo real.          |
-| **Alertas** (Grafana              | Automatiza decisiones de continuar o detener el despliegue.             |
+| **Monitoreo** (Prometheus)        | Detecta errores, latencias y métricas anómalas en tiempo real.          |
+| **Alertas** (Grafana)             | Automatiza decisiones de continuar o detener el despliegue.             |
 | **CI/CD** (GitHub Actions)        | Orquesta los pasos del pipeline canario progresivo.                     |
 
-## ✅ Ventajas
 
-- 🛡️ **Reducción de riesgos**: detecta errores en producción con impacto limitado.
-- 🚀 **Despliegue seguro y gradual**: sin afectar a todos los usuarios.
-- 🔁 **Rollback rápido**: elimina la versión canaria si falla.
-- 🧪 **Pruebas A/B y validación real**: ideal para evaluar nuevas funcionalidades.
+## 🚀 Ventajas de Usar GitHub Actions en Despliegues Canary
 
-## 📌 Consideraciones
+GitHub Actions permite automatizar y controlar despliegues Canary de forma segura y escalable. A continuación, se resumen sus principales beneficios:
 
-- Requiere herramientas que permitan segmentar tráfico (Istio, NGINX Ingress, etc.).
-- Necesita monitoreo proactivo para tomar decisiones informadas.
-- La automatización del rollback es altamente recomendable.
+| Funcionalidad                        | Beneficio para despliegue Canary                                                                 |
+|-------------------------------------|--------------------------------------------------------------------------------------------------|
+| **Automatización del flujo CI/CD**  | Automatiza pruebas, builds y despliegues sin intervención manual.                               |
+| **Control de versiones gradual**    | Permite lanzar una versión nueva a un pequeño porcentaje de usuarios y aumentar progresivamente.|
+| **Rollback automático**             | Si se detectan errores en la versión canaria, revierte a la versión estable sin afectar al resto del tráfico.|
+| **Integración con Prometheus** | Ejecuta scripts de `kubectl`, y analiza métricas en tiempo real.                    |
+| **Entornos diferenciados**          | Usa ramas (`dev`, `staging`, `main`) para desplegar en distintos entornos de forma controlada.  |
+| **Notificaciones integradas**       | Envía alertas a Discord, Slack o correo electrónico si algo falla durante el despliegue.        |
+| **Auditoría y trazabilidad**        | Registra cada cambio, quién lo hizo, y su impacto en el entorno, facilitando debugging y revisiones. |
+| **Escalabilidad y reutilización**   | Permite definir workflows reutilizables para múltiples microservicios o entornos.               |
 
----
-## 🔁 Estrategias de Rollback y Recuperación ante Fallos (Canary)
+>✅ En resumen:
+>GitHub Actions es fundamental en despliegues canary porque:
+>🔁 automatiza, 🔍 monitorea, 🛡️ protege, y 📈 optimiza la liberación controlada de versiones en producción, minimizando riesgos y acelerando el feedback.
+
+## 🔁 Estrategias de Rollback y Recuperación ante Fallos 
 
 En un Canary Deployment, detectar errores a tiempo y revertir la nueva versión antes de que impacte al 100% del tráfico es fundamental.
 
@@ -102,10 +108,42 @@ graph TD
 - Rollback en CI/CD	GitHub Actions puede tener pasos de rollback condicionados (if failure), o incluso tareas manuales para admins.
 - Control de tráfico dinámico	Service Mesh como Istio permite redirigir todo el tráfico de nuevo a la versión estable sin eliminar la canaria.
 
+---
 
-### 🔐 Recomendaciones clave para rollback con Canary:
-- Monitoreo en tiempo real obligatorio (CPU, errores, usuarios impactados).
-- Métricas de salud definidas: qué es un “fallo” y cuándo detener el rollout.
-- Pipeline CI/CD preparado: que tenga un paso de rollback claro y reproducible.
-- Notificación al equipo DevOps automáticamente vía Slack, correo o similar.
+## 🧪 Diferenciación de Entornos: DEV, STAGING, TEST y PRD
+
+La estrategia CI/CD debe contemplar entornos aislados y bien definidos para controlar la calidad y estabilidad de la plataforma en cada etapa:
+
+| Entorno   | Propósito                                                                 | Características Clave                                       |
+|-----------|---------------------------------------------------------------------------|--------------------------------------------------------------|
+| **DEV**   | Desarrollo activo, pruebas de nuevas funcionalidades y prototipos         | Despliegues automáticos por push. Permite errores y cambios frecuentes. |
+| **TEST**  | Validación funcional con pruebas unitarias e integración                  | Automatización de pruebas. Datos simulados.                  |
+| **STAGING** | Preproducción, entorno espejo del productivo para pruebas integradas     | Validación completa de flujos reales. Igual configuración que PRD. |
+| **PRD**   | Entorno de producción accesible por usuarios finales                      | Alta disponibilidad. Seguridad reforzada. |
+
+---
+
+## 🔐 Gestión de Credenciales y Secretos
+
+La protección de credenciales en entornos productivos es crítica. Se deben seguir estas prácticas:
+
+- ✅ **Uso de GitHub Secrets**: Almacenar claves de API, tokens y credenciales en el entorno seguro de GitHub Actions.
+- 🔒 **Separación por entorno**: Secretos distintos para DEV, STAGING y PRD.
+- 🔁 **Rotación periódica**: Actualizar credenciales sensibles de forma regular.
+- 🚫 **No exponer en logs**: Usar `secrets.*` en GitHub para ocultarlos en la salida del pipeline.
+
+---
+
+## 🛡️ Consideraciones de Seguridad en el Pipeline de Despliegue
+
+Un pipeline seguro garantiza integridad, autenticidad y confidencialidad durante el proceso de despliegue:
+
+| Riesgo                            | Mitigación                                                                 |
+|----------------------------------|----------------------------------------------------------------------------|
+| **Filtración de secretos**       | Uso de variables encriptadas (`secrets.GITHUB_TOKEN`, `AWS_ACCESS_KEY`)   |
+| **Código malicioso en PRs**      | Revisión obligatoria de código antes de ejecutar workflows en ramas protegidas |
+| **Acceso no autorizado**         | Uso de GitHub Environments con aprobación manual en PRD                   |
+| **Fugas en logs**                | Evitar `echo` de datos sensibles. Revisar outputs antes de aprobar un Pull Request .   |
+
+---
 
