@@ -114,6 +114,46 @@ graph TD
 
 La estrategia CI/CD debe contemplar entornos aislados y bien definidos para controlar la calidad y estabilidad de la plataforma en cada etapa:
 
+## 🔧 Diagrama de Diferenciación de Entornos
+
+```plaintext
+        ┌────────────────┐
+        │   Código       │
+        │  (GitHub)      │
+        └─────┬──────────┘
+              │ Push / PR
+              ▼
+        ┌────────────────┐
+        │    DEV         │
+        │ Desarrollo     │
+        │ - Features     │
+        │ - Cambios      │
+        └─────┬──────────┘
+              │ Merge
+              ▼
+        ┌────────────────┐
+        │   TEST         │
+        │ Pruebas unit   │
+        │ - CI checks    │
+        │ - Validación   │
+        └─────┬──────────┘
+              │ Aprobación QA
+              ▼
+        ┌────────────────┐
+        │  STAGING       │
+        │ Preproducción  │
+        │ - Tests E2E    │
+        └─────┬──────────┘
+              │ Despliegue controlado
+              ▼
+        ┌────────────────┐
+        │    PRD         │
+        │ Producción     │
+        │ - Usuarios     │
+        │ - Metr. reales │
+        └────────────────┘
+```
+
 | Entorno   | Propósito                                                                 | Características Clave                                       |
 |-----------|---------------------------------------------------------------------------|--------------------------------------------------------------|
 | **DEV**   | Desarrollo activo, pruebas de nuevas funcionalidades y prototipos         | Despliegues automáticos por push. Permite errores y cambios frecuentes. |
@@ -125,20 +165,106 @@ La estrategia CI/CD debe contemplar entornos aislados y bien definidos para cont
 
 ## 🔐 Gestión de Credenciales y Secretos
 
-La protección de credenciales en entornos productivos es crítica. Se deben seguir estas prácticas:
+-La gestión segura de credenciales y secretos (como contraseñas, claves API, tokens de acceso y certificados) es crítica en entornos de producción. Exponerlos, incluso accidentalmente, puede llevar a brechas de seguridad devastadoras. 
 
-- ✅ **Uso de GitHub Secrets**: Almacenar claves de API, tokens y credenciales en el entorno seguro de GitHub Actions.
-- 🔒 **Separación por entorno**: Secretos distintos para DEV, STAGING y PRD.
-- 🔁 **Rotación periódica**: Actualizar credenciales sensibles de forma regular.
-- 🚫 **No exponer en logs**: Usar `secrets.*` en GitHub para ocultarlos en la salida del pipeline.
+- Para proteger las credenciales en entornos de producción, se deben seguir las siguientes prácticas clave:
+
+  - ✅ **Uso de GitHub Secrets**: Almacenar claves de API, tokens y credenciales en el entorno seguro de GitHub Actions.
+  - 🔒 **Separación por entorno**: Secretos distintos para DEV, STAGING y PRD.
+  - 🔁 **Rotación periódica**: Actualizar credenciales sensibles de forma regular.
+  - 🚫 **No exponer en logs**: Usar `secrets.*` en GitHub para ocultarlos en la salida del pipeline.
 
 ---
 
 ## 🛡️ Consideraciones de Seguridad en el Pipeline de Despliegue
 
+En entornos críticos como plataformas de navegación y logística portuaria, la seguridad del pipeline CI/CD es esencial. A continuación se detallan algunas prácticas recomendadas:
+
+### 🔒 1. Uso de Variables y Secretos Seguros
+
+- Almacena claves, tokens y credenciales en **GitHub Secrets**, no en el código fuente.
+- Evita mostrar secretos en logs con `echo` o en outputs del pipeline.
+
+```yaml
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+```
+
+### ✅ 2. Validación y Revisión de Código en PRs
+
+- Habilita branch protection rules para main/production:
+  - Revisión de al menos 1 miembro del equipo.
+  - Tests exitosos antes de permitir el merge.
+  - Ejecuta workflows solo en PRs aprobados y ramas confiables:
+
+```yaml
+on:
+  pull_request:
+    branches:
+      - main
+jobs:
+  build:
+    if: github.event.pull_request.merged == true
+```
+
+### 🔐 3. Control de Accesos y Permisos
+
+- Usa GitHub Environments con aprobaciones manuales para producción.
+  -  ejemplo: 
+    1. **staging**: Para despliegues de staging.
+    2. **production**: Para despliegues de producción.
+
+- Limita el acceso a runners sensibles o auto-hospedados.
+- Evitar privilegios excesivos en los scripts de despliegue.
+
+Los workflows requieren estos permisos:
+
+```yaml
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  actions: read
+```
+
+🧪 4. Validación de Artefactos y Seguridad del Código
+
+- Escanea vulnerabilidades con herramientas como:
+  - 🔍 Trivy (vulnerabilidades)
+  - 🔍 Bandit (análisis de código Python)
+  - 🔍 pip-audit (auditoría de dependencias)
+  - 🔍 Safety (vulnerabilidades en dependencias)
+  - 🔍 Hadolint (linting de Dockerfile)
+  
+  
+
+```yaml
+- name: Seguridad: Auditoría de dependencias
+  run: |
+    pip install pip-audit
+    pip-audit
+```
+>Consulta el archivo .github/workflows/security.yml para más detalles.
+
+
+🚨 5. Notificaciones ante Fallos o Actividad Sospechosa
+
+- Notifica vía Discord, Slack o email si un despliegue falla.
+- Integra con SIEM o herramientas de monitoreo para alertas en tiempo real.
+
+```yaml
+- name: Notificación de error en Discord
+  if: failure()
+  uses: Ilshidur/action-discord@v1
+  with:
+    webhook: ${{ secrets.DISCORD_WEBHOOK }}
+    message: "⚠️ Fallo en el pipeline de despliegue."
+```
+
 Un pipeline seguro garantiza integridad, autenticidad y confidencialidad durante el proceso de despliegue:
 
-| Riesgo                            | Mitigación                                                                 |
+| Riesgo                           | Mitigación                                                                 |
 |----------------------------------|----------------------------------------------------------------------------|
 | **Filtración de secretos**       | Uso de variables encriptadas (`secrets.GITHUB_TOKEN`, `AWS_ACCESS_KEY`)   |
 | **Código malicioso en PRs**      | Revisión obligatoria de código antes de ejecutar workflows en ramas protegidas |
@@ -146,4 +272,99 @@ Un pipeline seguro garantiza integridad, autenticidad y confidencialidad durante
 | **Fugas en logs**                | Evitar `echo` de datos sensibles. Revisar outputs antes de aprobar un Pull Request .   |
 
 ---
+## 📊 Implementación de Monitoreo Continuo
 
+La plataforma de navegación portuaria requiere visibilidad completa sobre el comportamiento de los servicios, infraestructura y flujos marítimos en tiempo real. Para lograrlo, se implementa una estrategia integral de **monitoreo y observabilidad**.
+
+### 📌 Beneficios del Monitoreo Continuo
+
+- Prevención de incidentes antes de que afecten a producción.
+- Visibilidad completa del sistema distribuido.
+- Facilidad de diagnóstico durante fallos o degradaciones.
+- Mejora de la seguridad y trazabilidad operativa.
+
+### 🛠️ 1. Selección de Herramientas de Monitoreo y Observabilidad
+
+| Herramienta         | Función Principal                                         | Ventajas Clave                                         |
+|---------------------|-----------------------------------------------------------|--------------------------------------------------------|
+| **Prometheus**      | Recolección y almacenamiento de métricas (time-series)    | Alta integración con Kubernetes, potente lenguaje de consulta (PromQL) |
+| **Grafana**         | Visualización de métricas y creación de dashboards        | Soporte para alertas, paneles personalizables, integración con múltiples fuentes |
+| **Alertmanager**    | Gestión y envío de alertas basadas en reglas de Prometheus| Integración con Discord, Slack, Email, etc.            |
+| **Fluent Bit**      | Recolección y envío de logs liviano desde contenedores    | Bajo consumo, integración directa con Kubernetes y ELK |
+| **Elasticsearch**   | Almacenamiento e indexación de logs                       | Alta velocidad de búsqueda y escalabilidad horizontal  |
+| **Logstash**        | Procesamiento y envío de logs hacia Elasticsearch         | Flexibilidad en el pipeline de datos                   |
+| **Kibana**          | Visualización y análisis de logs                          | UI potente para trazabilidad y búsquedas 
+|
+
+### 🔎 Estrategia de manejo de logs y métricas
+
+- **Logs**:
+  - **Fluent Bit** capta los logs de contenedores.
+  - Pasa la información a **Logstash**, que la procesa.
+  - Luego se almacena en **Elasticsearch** y se visualiza en **Kibana**.
+    
+- **Métricas**:
+  - Aplicaciones y servicios exponen datos que son recolectados por **Prometheus**.
+  - Estos datos se visualizan con **Grafana**.
+  - **Alertmanager** se encarga de generar alertas cuando hay valores críticos.
+
+```mermaid
+flowchart TD
+  subgraph Kubernetes Cluster
+    app[Aplicaciones y Pods]
+    kube[Kubernetes Metrics]
+    logs[Logs del sistema / contenedores]
+  end
+
+  app -->|Expone métricas| prometheus[Prometheus]
+  kube --> prometheus
+  logs --> fluentbit[Fluent Bit]
+
+  prometheus --> alertmanager[Alertmanager]
+  alertmanager -->|Alertas| discord[Discord Webhook]
+  alertmanager --> email[Email]
+
+  prometheus --> grafana[Grafana]
+  elasticsearch[Elasticsearch] --> kibana[Kibana]
+
+  fluentbit --> logstash[Logstash]
+  logstash --> elasticsearch
+
+  classDef storage fill:#fdf6e3,stroke:#dcb67a,stroke-width:1px;
+  class elasticsearch,prometheus storage;
+```
+## ⚙️ Configuración de Alertas y Dashboards
+Configurar alertas y dashboards correctamente es clave para detectar incidentes tempranos y mantener la estabilidad de tu plataforma. 
+
+Ejemplos:
+
+### 🔔 1. Alertas con Prometheus y Alertmanager
+- a) Define las reglas de alerta (prometheus.yml )
+
+```yaml
+groups:
+  - name: reglas_alerta
+    rules:
+      - alert: UsoAltoCPU
+        expr: avg(rate(container_cpu_usage_seconds_total[1m])) by (pod) > 0.85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso alto de CPU en {{ $labels.pod }}"
+          description: "El pod {{ $labels.pod }} está usando más del 85% de CPU por más de 2 minutos."
+```
+b) Configura Alertmanager (alertmanager.yml)
+```yaml
+receivers:
+  - name: equipo-devops
+    discord_configs:
+      - webhook_url: 'https://discord.com/api/webhooks/...'
+        message: '{{ .CommonAnnotations.summary }}\n{{ .CommonAnnotations.description }}'
+
+route:
+  receiver: equipo-devops
+  group_wait: 30s
+  repeat_interval: 1h
+```
+>✅ Consejo: Puedes agregar más receptores (Slack, email, etc.)
