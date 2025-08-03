@@ -51,7 +51,7 @@ Para una plataforma portuarias que gestiona operaciones críticas en tiempo real
 
 | Fase                 | Tráfico versión estable  | Tráfico versión canaria  |
 |----------------------|--------------------------|--------------------------|
-| Inicial              | 95%                      | 5%                       |
+| Inicial              | 95%                      | 10%                      |
 | Después de validación| 75%                      | 25%                      |
 | Ampliación gradual   | 50%                      | 50%                      |
 | Final                | 0%                       | 100%                     |
@@ -60,7 +60,7 @@ Para una plataforma portuarias que gestiona operaciones críticas en tiempo real
 
 | Componente                        | Función                                                                 |
 |-----------------------------------|-------------------------------------------------------------------------|
-| **Service Mesh** (Istio, Linkerd) | Controla y ajusta la distribución de tráfico entre versiones.           |
+| **Service Mesh** (Istio)          | Controla y ajusta la distribución de tráfico entre versiones.           |
 | **Monitoreo** (Prometheus)        | Detecta errores, latencias y métricas anómalas en tiempo real.          |
 | **Alertas** (Grafana)             | Automatiza decisiones de continuar o detener el despliegue.             |
 | **CI/CD** (GitHub Actions)        | Orquesta los pasos del pipeline canario progresivo.                     |
@@ -161,7 +161,74 @@ La estrategia CI/CD debe contemplar entornos aislados y bien definidos para cont
 | **STAGING** | Preproducción, entorno espejo del productivo para pruebas integradas     | Validación completa de flujos reales. Igual configuración que PRD. |
 | **PRD**   | Entorno de producción accesible por usuarios finales                      | Alta disponibilidad. Seguridad reforzada. |
 
----
+## 🚀 Descripción del Workflow de Despliegue (.github/workflows/deploy.yml)
+
+Este workflow de GitHub Actions automatiza el proceso de construcción y despliegue de la aplicación a entornos diferenciados: Staging y Producción. Se ejecuta automáticamente cuando se realiza un push de una etiqueta (v*) o manualmente mediante el selector de entorno (workflow_dispatch).
+
+### 📦 Disparadores
+```yaml
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options:
+          - staging
+          - production
+```
+- push con tags tipo v1.0.0: despliega automáticamente a staging.
+- workflow_dispatch: permite ejecutar manualmente el despliegue y elegir entre staging o production.
+
+🌐 Variables Globales
+```yaml
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+```
+- Define el registry (ghcr.io) y el nombre de la imagen como el repositorio actual (usuario/repositorio).
+  - 🔧 Jobs definidos
+  - 🧪 deploy-staging
+
+- Ejecutado automáticamente en push de tag o manualmente seleccionando staging.
+Pasos:
+
+    1. Clonación del código fuente
+
+    2. Configuración de Docker Buildx para builds multi-arquitectura
+
+    3. Inicio de sesión en GitHub Container Registry (ghcr.io)
+
+    4. Extracción de metadatos para etiquetar la imagen como :staging
+
+    5. Build y push de la imagen Docker con caché
+
+    6. Despliegue a staging
+
+    7. Health check básico (puede extenderse con scripts de verificación)
+
+### 🚀 deploy-production
+
+- Ejecutado solo manualmente seleccionando el entorno production.
+Diferencias clave:
+
+  - Imagen se etiqueta como :latest
+  -  Requiere ejecución manual
+  -  Ideal para integrar revisiones o aprobaciones antes de producción
+
+### 🔔 notify (Notificación de estado)
+
+- Este job se ejecuta siempre, sin importar si los despliegues anteriores fueron exitosos o fallidos.
+
+  - Si tuvo éxito:
+    - 🎉 Deployment completed successfully!
+
+  - Si falló:
+    - ❌ Deployment failed!
+
+>Aquí puedes integrar notificaciones a Slack, Discord, Email o Webhooks.
 
 ## 🔐 Gestión de Credenciales y Secretos
 
@@ -186,9 +253,13 @@ En entornos críticos como plataformas de navegación y logística portuaria, la
 - Evita mostrar secretos en logs con `echo` o en outputs del pipeline.
 
 ```yaml
-env:
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+# Para despliegue
+DEPLOY_SSH_KEY          # Clave SSH para servidor de despliegue
+DEPLOY_HOST             # Host del servidor
+DEPLOY_USER             # Usuario del servidor
+
+# Para notificaciones con Discord
+DISCORD_WEBHOOK_URL     
 ```
 
 ### ✅ 2. Validación y Revisión de Código en PRs
@@ -212,8 +283,8 @@ jobs:
 
 - Usa GitHub Environments con aprobaciones manuales para producción.
   -  ejemplo: 
-    1. **staging**: Para despliegues de staging.
-    2. **production**: Para despliegues de producción.
+    - **staging**: Para despliegues de staging.
+    - **production**: Para despliegues de producción.
 
 - Limita el acceso a runners sensibles o auto-hospedados.
 - Evitar privilegios excesivos en los scripts de despliegue.
@@ -234,18 +305,64 @@ permissions:
   - 🔍 Trivy (vulnerabilidades)
   - 🔍 Bandit (análisis de código Python)
   - 🔍 pip-audit (auditoría de dependencias)
-  - 🔍 Safety (vulnerabilidades en dependencias)
   - 🔍 Hadolint (linting de Dockerfile)
-  
-  
 
 ```yaml
-- name: Seguridad: Auditoría de dependencias
-  run: |
-    pip install pip-audit
-    pip-audit
+name: 🔐 Security Scans
+
+on:
+  push:
+    branches: [main, canary, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  security-scan:
+    name: 🔎 Escaneo de seguridad
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Clonar repositorio
+      uses: actions/checkout@v3
+
+    # -------------------------------
+    # 🔍 Trivy - Escaneo de vulnerabilidades
+    # -------------------------------
+    - name: 🐳 Trivy (Dockerfile y dependencias)
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: fs
+        scan-ref: .
+        format: table
+        exit-code: 1  # Falla si encuentra vulnerabilidades altas o críticas
+        severity: CRITICAL,HIGH
+
+    # -------------------------------
+    # 🐍 Bandit - Análisis de seguridad Python
+    # -------------------------------
+    - name: 🔍 Bandit (código Python)
+      run: |
+        pip install bandit
+        bandit -r . -lll -ii -o bandit-report.txt || true
+        cat bandit-report.txt
+
+    # -------------------------------
+    # 🧪 pip-audit - Dependencias Python
+    # -------------------------------
+    - name: 📦 pip-audit (dependencias inseguras)
+      run: |
+        pip install pip-audit
+        pip-audit || true
+
+    # -------------------------------
+    # 🧱 Hadolint - Análisis Dockerfile
+    # -------------------------------
+    - name: 🧼 Hadolint (Dockerfile)
+      uses: hadolint/hadolint-action@v3.1.0
+      with:
+        dockerfile: ./Dockerfile
 ```
->Consulta el archivo .github/workflows/security.yml para más detalles.
+>archivo .github/workflows/security.yml
 
 
 🚨 5. Notificaciones ante Fallos o Actividad Sospechosa
