@@ -471,6 +471,7 @@ groups:
           summary: "Uso alto de CPU en {{ $labels.pod }}"
           description: "El pod {{ $labels.pod }} está usando más del 85% de CPU por más de 2 minutos."
 ```
+
 b) Configura Alertmanager (alertmanager.yml)
 ```yaml
 receivers:
@@ -484,4 +485,68 @@ route:
   group_wait: 30s
   repeat_interval: 1h
 ```
->✅ Consejo: Puedes agregar más receptores (Slack, email, etc.)
+## 🤖 Automatización y ChatOps con Discord
+
+ChatOps integra herramientas de colaboración (como Slack o Microsoft Teams) con procesos operativos y de automatización. Esto permite a los equipos operar, monitorear y resolver problemas directamente desde el chat.
+
+- Con Slack puedes notificar automáticamente al equipo sobre:
+
+  - 📦 Nuevos despliegues
+  - ❌ Fallos de CI/CD
+  - 🚨 Incidentes detectados por Prometheus
+  - 🔄 Acciones como rollback, reinicio o actualizaciones (vía comandos externos)
+
+- ejemplo de notificacion 
+
+```yaml
+- name: Notificar fallo en Slack
+  if: failure()
+  run: |
+    curl -X POST -H 'Content-type: application/json' \
+    --data '{"text":"❌ Falló el despliegue de PortTrack en staging"}' \
+    ${{ secrets.SLACK_WEBHOOK }}
+```
+### 🧱 1. Integración con Slack
+A. Crear un Webhook en Slack
+
+- Ve a Slack API Apps → "Create App"
+- Agrega el bot a tu workspace y canal
+- Habilita Incoming Webhooks
+- Crea un Webhook e inserta el URL en tus GitHub Secrets
+
+>✅ Consejo: Puedes agregar más receptores (Discord, email, etc.)
+
+### 💬 Ejemplo de Flujo de ChatOps con Discord
+
+[1] Dev hace push a `main`
+[2] GitHub Actions ejecuta pipeline
+[3] Al finalizar:
+    - Si fue exitoso → notifica en #deploys
+    - Si falló → alerta en #incidentes
+[4] Dev puede usar Hubot para reiniciar pods o ver logs sin salir de Slack
+
+Ejemplo de alerta desde Prometheus
+```yaml
+receivers:
+  - name: equipo-devops
+    slack_configs:
+      - channel: '#incidentes'
+        send_resolved: true
+        text: |
+          *🚨 Alerta:* {{ .CommonAnnotations.summary }}
+          *📋 Descripción:* {{ .CommonAnnotations.description }}
+```
+### ⚡ ChatOps  con Hubot
+
+Si quieres que los desarrolladores interactúen con tu infraestructura desde Slack, puedes usar:
+
+### 🤖 Hubot 
+
+- Framework de bots extensible para Slack, Discord, Telegram, etc.
+- Plugins para Kubernetes, Jenkins, GitHub, CI/CD
+- Permite ejecutar comandos como:
+- @portbot despliega staging
+- @portbot reinicia servicio porttrack
+
+>📦 https://hubot.github.com/
+
